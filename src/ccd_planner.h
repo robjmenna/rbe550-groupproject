@@ -35,13 +35,18 @@ namespace ccd_planner {
         costmap_2d::Costmap2DROS* costmap_ros_;
         bool initialized_ = false;
         float alpha_;
+        float radius = 0.3;
+        int cell_radius = 1;
         unsigned int lethal_threshold_ = 150;
         std::set<int> visited_;
         bool mapped_ = false;
         std::map<int, int> wavefront_cost_;
 
+        void getNeighbors(const unsigned int x, const unsigned int y, costmap_2d::MapLocation (&neighbors)[4]);
         void computeWavefront(const unsigned int start_x, const unsigned int start_y);
-        void markOverlappedAsVisited(const unsigned int x, const unsigned int y);
+        void markOverlappedAsVisited(const unsigned int x, const unsigned int y,std::set<int>& visited);
+        void search_dprime(const costmap_2d::MapLocation& start_location, std::set<int>& visited_sofar, std::vector<geometry_msgs::PoseStamped>& plan);
+        void appendPose(const unsigned int x, const unsigned int y, std::vector<geometry_msgs::PoseStamped>& plan);
     };
 };
 #endif
