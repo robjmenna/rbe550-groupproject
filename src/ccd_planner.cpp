@@ -26,7 +26,7 @@
         {
             costmap_ = costmap_ros->getCostmap();
             costmap_ros_ = costmap_ros;
-            alpha_ = 0.5;
+            // alpha_ = 0.5;
         }
         else
         {
@@ -38,16 +38,9 @@
     {
         std::queue<unsigned int> queue;
         std::set<unsigned int> visited;
-        // unsigned int start_x;
-        // unsigned int start_y;
-        // unsigned int current_x;
-        // unsigned int current_y;
-        // unsigned char cost;
-        // unsigned int new_index;
-        // std::pair<std::set<unsigned int>::iterator, bool> ret;
-        // unsigned int current_index;
+        std::map<int, int> int_cost;
         wavefront_cost_.clear();
-
+        int max_cost = 0;
         ROS_INFO("Running the wavefront propagation algorithm.");
         auto current_index = costmap_->getIndex(start_x, start_y);
         queue.push(current_index);
@@ -90,9 +83,19 @@
                     if (ret.second && cost < lethal_threshold_)
                     {
                         queue.push(new_index);
-                        wavefront_cost_[new_index] = wavefront_cost_[current_index] + 1;
+                        int_cost[new_index] = int_cost[current_index] + 1;
+                        if (int_cost[new_index] > max_cost)
+                        {
+                            max_cost = int_cost[new_index];
+                        }
                     }
                 }
+            }
+
+            std::map<int, int>::iterator it;
+            for (it = int_cost.begin(); it != int_cost.end(); it++)
+            {
+                wavefront_cost_[it->first] = ((double)it->second) / ((double)max_cost);
             }
         }
 
@@ -236,7 +239,7 @@
         while (true)
         {
             // unsigned int next_index;
-            unsigned int cost = 0;
+            double cost = 0;
             costmap_2d::MapLocation next_location;
 
             // unsigned int next_x;
@@ -273,11 +276,12 @@
                 auto temp_index = costmap_->getIndex(neighbors[i][0], neighbors[i][1]);
                 auto it = wavefront_cost_.find(temp_index);
                 auto v_it = visited_.find(temp_index);
+                auto lv_it = local_visited.find(temp_index);
                 // auto foo = costmap_->getCost(neighbors[i][0], neighbors[i][1]);
                 // ROS_INFO("%d", it != wavefront_cost_.end());
-                if (v_it == visited_.end() && it != wavefront_cost_.end())
+                if (v_it == visited_.end() && it != wavefront_cost_.end() && lv_it == local_visited.end())
                 {
-                    auto weighted_cost = wavefront_cost_[temp_index];
+                    auto weighted_cost = wavefront_cost_[temp_index] - alpha_*((double)costmap_->getCost(neighbors[i][0], neighbors[i][1]) / 255.0);
                     // ROS_INFO("Found cost %d", weighted_cost);
                     // auto weighted_cost = wavefront_cost_[temp_index] + costmap_->getCost(neighbors[i][0], neighbors[i][1]);
                     if (weighted_cost > cost)
@@ -312,7 +316,8 @@
             {
                 appendPose(next_location.x, next_location.y, plan);
                 auto new_index = costmap_->getIndex(next_location.x, next_location.y);
-                visited_.insert(new_index);
+                // visited_.insert(new_index);
+                markOverlappedAsVisited(next_location.x, next_location.y, local_visited);
                 map_coords.push_back(next_location);
             }
         }
