@@ -114,27 +114,6 @@
                 visited.insert(new_index);
             }
         }
-
-        // std::vector<costmap_2d::MapLocation> covered_cells;
-        // geometry_msgs::PoseStamped robot_position;
-        // costmap_ros_->getRobotPose(robot_position);
-        // auto dx = x - robot_position.pose.position.x;
-        // auto dy = y - robot_position.pose.position.y;
-        // auto footprint = costmap_ros_->getRobotFootprint();
-        // std::vector<costmap_2d::MapLocation> rob_location;
-        // for (int i=0; i < footprint.size(); i++)
-        // {
-        //     costmap_2d::MapLocation location;
-        //     costmap_->worldToMap(footprint[i].x + dx, footprint[i].y + dy, location.x, location.y);
-        //     rob_location.push_back(location);
-        // }
-
-        // costmap_->polygonOutlineCells(rob_location, covered_cells);
-        // for (int i=0; i < covered_cells.size(); i++)
-        // {
-        //     auto temp_index = costmap_->getIndex(covered_cells[i].x, covered_cells[i].y);
-        //     visited_.insert(temp_index);
-        // }
     }
 
     void GlobalPlanner::search_dprime(const costmap_2d::MapLocation& start_location, std::set<int>& visited_sofar, std::vector<geometry_msgs::PoseStamped>& plan)
@@ -226,18 +205,9 @@
     }
 
     bool GlobalPlanner::makePlan(const geometry_msgs::PoseStamped& start, const geometry_msgs::PoseStamped& goal,  std::vector<geometry_msgs::PoseStamped>& plan ){        
-        // unsigned int current_x;
-        // unsigned int current_y;
-        // unsigned int current_index;
         geometry_msgs::PoseStamped robot_pose;
-        // geometry_msgs::PoseStamped current_pose;
         costmap_2d::MapLocation map_location;
         std::set<int> local_visited;
-        // visited_.clear();
-        // tf::Stamped<tf::Pose> current_pose_tf;
-        // tf::Stamped<tf::Pose> robot_pose_tf;
-        // std::vector<geometry_msgs::Point> footprint;
-        // std::pair<std::set<unsigned int>::iterator, bool> ret;
 
         costmap_ros_->getRobotPose(robot_pose);
         // current_index = costmap_->getIndex(current_x, current_y);
@@ -253,28 +223,9 @@
             computeWavefront(goal_x, goal_y);
         }
 
-        // plan.push_back(start);
-        // auto footprint = costmap_ros_->getRobotFootprint();
-        // float radius = 2*(robot_pose.pose.position.x - footprint[1].x);
-        // ROS_INFO("Determined the radius of the robot as %f", radius);
-        // auto dx_ = robot_pose.pose.position.x - 
-        // tf::poseStampedMsgToTF(robot_pose, robot_pose_tf);
-        // auto footprint = costmap_ros_->getRobotFootprint();
-        // for (int i=0; i < footprint.size(); i++)
-        // {
-        //     tf::Point pt;
-        //     tf::pointMsgToTF(footprint[i], pt);
-        //     auto new_pt = pt * 
-        // }
+
         std::vector<costmap_2d::MapLocation> map_coords;
-        // auto foo_ = costmap_ros_->getRobotFootprint();
-        // for (int i=0; i < foo_.size(); i++)
-        // {
-        //     unsigned int cell_x;
-        //     unsigned int cell_y;
-        //     costmap_->worldToMap(foo_[i].x, foo_[i].y, cell_x, cell_y);
-        //     ROS_INFO("(%d,%d)", cell_x, cell_y);
-        // }
+
         markOverlappedAsVisited(map_location.x, map_location.y, visited_);
         markOverlappedAsVisited(map_location.x, map_location.y, local_visited);
         plan.push_back(start);
@@ -334,7 +285,6 @@
                         cost = weighted_cost;
                         next_location.x = neighbors[i][0];
                         next_location.y = neighbors[i][1];
-                        // next_index = temp_index;
                     }
                 }
             }
@@ -344,8 +294,6 @@
                 // ROS_INFO("Complete!");
                 // return true;
                 auto current_size = plan.size();
-                // next_location.x = next_x;
-                // next_location.y = next_y;
                 search_dprime(next_location, local_visited, plan);
 
                 if (current_size == plan.size())
@@ -365,22 +313,6 @@
                 appendPose(next_location.x, next_location.y, plan);
                 auto new_index = costmap_->getIndex(next_location.x, next_location.y);
                 visited_.insert(new_index);
-                // auto init_pos = -cell_radius;
-                // auto final_pos = cell_radius + 1;
-                // for(int i=init_pos; i < final_pos; i++)
-                // {
-                //     for (int j=init_pos; j < final_pos; j++)
-                //     {
-                //         auto new_x = next_x + i;
-                //         auto new_y = next_y + j;
-                //         auto new_index = costmap_->getIndex(new_x, new_y);
-                //         visited_.insert(new_index);
-                //     }
-                // }
-
-                // costmap_2d::MapLocation temp_location;
-                // temp_location.x = next_x;
-                // temp_location.y = next_y;
                 map_coords.push_back(next_location);
             }
         }
