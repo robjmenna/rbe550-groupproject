@@ -25,6 +25,10 @@
         {
             costmap_ = costmap_ros->getCostmap();
             costmap_ros_ = costmap_ros;
+            ros::param::get("~alpha", alpha);
+            ros::param::get("~radius", radius);
+            ros::param::get("~resolution", resolution);
+            ros::param::get("~lethal_threshold", lethal_threshold_);
         }
         else
         {
@@ -52,6 +56,7 @@
         queue.push(goal);
         wavefront_map[goal.x][goal.y] = 0;
         visited.insert(costmap_->getIndex(goal.x, goal.y));
+        max_wave_cost = 0;
 
         while (queue.size() > 0)
         {
@@ -86,16 +91,16 @@
                 {
                     auto cost = costmap_->getCost(neighbors[i].x, neighbors[i].y);
                     auto new_index = costmap_->getIndex(neighbors[i].x, neighbors[i].y);
-                    ROS_INFO("Querying node (%d, %d), which has cost %d", neighbors[i].x, neighbors[i].y, cost);
+                    // ROS_INFO("Querying node (%d, %d), which has cost %d", neighbors[i].x, neighbors[i].y, cost);
                     auto ret = visited.insert(new_index);
                     if (ret.second && cost < lethal_threshold_)
                     {
                         queue.push(neighbors[i]);
                         wavefront_map[neighbors[i].x][neighbors[i].y] = wavefront_map[current_x][current_y] + 1;
-                        // if (int_cost[new_index] > max_cost)
-                        // {
-                        //     max_cost = int_cost[new_index];
-                        // }
+                        if (wavefront_map[neighbors[i].x][neighbors[i].y] > max_wave_cost)
+                        {
+                            max_wave_cost = wavefront_map[neighbors[i].x][neighbors[i].y];
+                        }
                     }
                 }
             }
@@ -113,6 +118,7 @@
 
     void GlobalPlanner::markOverlappedAsVisited(const costmap_2d::MapLocation& pos, std::set<int>& visited)
     {
+        auto cell_radius = radius / resolution;
         auto init_pos = -cell_radius;
         auto final_pos = cell_radius + 1;
         for(int i=init_pos; i < final_pos; i++)
@@ -127,7 +133,9 @@
         }
     }
 
-    void GlobalPlanner::search_dprime(const costmap_2d::MapLocation& start_location, std::set<int>& visited_sofar, std::vector<geometry_msgs::PoseStamped>& plan)
+    void GlobalPlanner::search_dprime(const costmap_2d::MapLocation& start_location, 
+        std::set<int>& visited_sofar, std::vector<geometry_msgs::PoseStamped>& plan,
+        nav_msgs::OccupancyGridConstPtr clean_grid)
     {
         std::map<int, int> vertex_table;
         std::set<int> closed;
@@ -140,70 +148,106 @@
             auto current_location = queue.front();
             auto current_index = costmap_->getIndex(current_location.x, current_location.y);
             queue.pop();
-            costmap_2d::MapLocation neighbors [4];
+            std::vector<costmap_2d::MapLocation> neighbors;
             getNeighborsFine(current_location.x, current_location.y, neighbors);
-            for (int i=0; i < 4; i++)
+            for (int i=0; i < neighbors.size(); i++)
             {
                 auto neighbor_index = costmap_->getIndex(neighbors[i].x, neighbors[i].y);
                 // auto it = wavefront_cost_.find(current_index);
-                auto closed_it = closed.find(neighbor_index);
-                auto cost = costmap_->getCost(neighbors[i].x, neighbors[i].y);
-                if (cost < lethal_threshold_ && closed_it == closed.end())
+                auto ret = closed.insert(neighbor_index);
+                if (ret.second)
                 {
-                    closed.insert(neighbor_index);
-                    // auto neighbor_index = costmap_->getIndex(neighbors[i].x, neighbors[i].y);
-                    vertex_table[neighbor_index] = current_index;
-                    auto neighbor_it = visited_sofar.find(neighbor_index);
-                    if (neighbor_it == visited_sofar.end())
-                    {
-                        auto next = neighbor_index;
-                        std::vector<costmap_2d::MapLocation> new_path;
-                        while(next != start_index)
-                        {
-                            costmap_2d::MapLocation l;
-                            costmap_->indexToCells(next, l.x, l.y);
-                            markOverlappedAsVisited(l, visited_sofar);
-                            new_path.push_back(l);
-                            next = vertex_table[next];
-                        }
-
-                        for(int i=new_path.size()-1; i >= 0; i--)
-                        {
-                            appendPose(new_path[i], plan);
-                        }
-                        return;
-                    }
-                    else
-                    {
-                        queue.push(neighbors[i]);
-                    }
+                    continue;
                 }
+
+                // auto closed_it = closed.find(neighbor_index);
+                auto cost = costmap_->getCost(neighbors[i].x, neighbors[i].y);
+                //todo: move into function
+                auto clean_state = clean_grid->data[neighbor_index];
+                vertex_table[neighbor_index] = current_index;
+
+                if (cost < lethal_threshold_ && clean_state > clean_threshold)
+                {
+                    // closed.insert(neighbor_index);
+                    // auto neighbor_index = costmap_->getIndex(neighbors[i].x, neighbors[i].y);
+                    // auto neighbor_it = visited_sofar.find(neighbor_index);
+                    // if (neighbor_it == visited_sofar.end())
+                    // {
+                    auto next = neighbor_index;
+                    std::vector<costmap_2d::MapLocation> new_path;
+                    while(next != start_index)
+                    {
+                        costmap_2d::MapLocation l;
+                        // visited_sofar.insert(next);
+                        costmap_->indexToCells(next, l.x, l.y);
+                        markOverlappedAsVisited(l, visited_sofar);
+                        new_path.push_back(l);
+                        next = vertex_table[next];
+                    }
+
+                    for(int i=new_path.size()-1; i >= 0; i--)
+                    {
+                        appendPose(new_path[i], plan);
+                    }
+                    return;
+                    // }
+                    // else
+                    // {
+                    // }
+                }
+                queue.push(neighbors[i]);
             }
         }
     }
 
-    void GlobalPlanner::getNeighbors(const unsigned int x, const unsigned int y, costmap_2d::MapLocation (&neighbors)[4])
+    void GlobalPlanner::getNeighbors(const unsigned int x, const unsigned int y, std::vector<costmap_2d::MapLocation>& neighbors)
     {
-        neighbors[0].x = x + (cell_radius + 1);
-        neighbors[0].y = y;
-        neighbors[1].x = x - (cell_radius + 1);
-        neighbors[1].y = y;
-        neighbors[2].x = x;
-        neighbors[2].y = y + (cell_radius + 1);
-        neighbors[3].x = x;
-        neighbors[3].y = y - (cell_radius + 1);
+        costmap_2d::MapLocation neighbors_ [4];
+        auto cell_radius = radius / resolution;
+        neighbors_[0].x = x + (cell_radius + 1);
+        neighbors_[0].y = y;
+        neighbors_[1].x = x - (cell_radius + 1);
+        neighbors_[1].y = y;
+        neighbors_[2].x = x;
+        neighbors_[2].y = y + (cell_radius + 1);
+        neighbors_[3].x = x;
+        neighbors_[3].y = y - (cell_radius + 1);
+
+        for (int i=0; i < 4; i++)
+        {
+            auto x_good = neighbors_[i].x >= 0 && neighbors_[i].x < costmap_->getSizeInCellsX();
+            auto y_good = neighbors_[i].y >= 0 && neighbors_[i].y < costmap_->getSizeInCellsY();
+
+            if (x_good && y_good)
+            {
+                neighbors.push_back(neighbors_[i]);
+            }
+        }
     }
 
-    void GlobalPlanner::getNeighborsFine(const unsigned int x, const unsigned int y, costmap_2d::MapLocation (&neighbors)[4])
+    void GlobalPlanner::getNeighborsFine(const unsigned int x, const unsigned int y, std::vector<costmap_2d::MapLocation>& neighbors)
     {
-        neighbors[0].x = x + 1;
-        neighbors[0].y = y;
-        neighbors[1].x = x - 1;
-        neighbors[1].y = y;
-        neighbors[2].x = x;
-        neighbors[2].y = y + 1;
-        neighbors[3].x = x;
-        neighbors[3].y = y - 1;
+        costmap_2d::MapLocation neighbors_ [4];
+
+        neighbors_[0].x = x + 1;
+        neighbors_[0].y = y;
+        neighbors_[1].x = x - 1;
+        neighbors_[1].y = y;
+        neighbors_[2].x = x;
+        neighbors_[2].y = y + 1;
+        neighbors_[3].x = x;
+        neighbors_[3].y = y - 1;
+
+        for (int i=0; i < 4; i++)
+        {
+            auto x_good = neighbors_[i].x >= 0 && neighbors_[i].x < costmap_->getSizeInCellsX();
+            auto y_good = neighbors_[i].y >= 0 && neighbors_[i].y < costmap_->getSizeInCellsY();
+
+            if (x_good && y_good)
+            {
+                neighbors.push_back(neighbors_[i]);
+            }
+        }
     }
 
     void GlobalPlanner::appendPose(const costmap_2d::MapLocation& location, std::vector<geometry_msgs::PoseStamped>& plan)
@@ -215,7 +259,7 @@
         // auto temp_index = costmap_->getIndex(next_x, next_y);
         // visited_.insert(temp_index);
         costmap_->mapToWorld(location.x, location.y, x, y);
-        ROS_INFO("Setting next point at (%d, %d)", x, y);
+        // ROS_INFO("Setting next point at (%f, %f)", x, y);
         // ROS_INFO("%d", (int)plan.size());
         geometry_msgs::PoseStamped current_pose;
         current_pose.header.frame_id = "map";
@@ -253,8 +297,8 @@
         std::set<int> visited;
 
         // computeWavefront(goal, wavefront_map);
-        auto clean_grid = ros::topic::waitForMessage<nav_msgs::OccupancyGrid>("/coverage_grid");
         markOverlappedAsVisited(start, visited);
+        auto clean_grid = ros::topic::waitForMessage<nav_msgs::OccupancyGrid>("/coverage_grid", ros::Duration(5));
         // markOverlappedAsVisited(map_location.x, map_location.y, local_visited);
         // plan.push_back(start);
         // plan.push_back(robot_pose);
@@ -272,7 +316,7 @@
 
             // unsigned int next_x;
             // unsigned int next_y;
-            costmap_2d::MapLocation neighbors [4];
+            std::vector<costmap_2d::MapLocation> neighbors;
 
             auto current_x = current_location.x;
             auto current_y = current_location.y;
@@ -287,40 +331,37 @@
             // neighbors[3][0] = current_x;
             // neighbors[3][1] = current_y - cell_radius + 2;
 
-            for (int i=0; i < 4; i++)
+            for (int i=0; i < neighbors.size(); i++)
             {
-                // int neighbor_x;
-                // int neighbor_y;
 
-                if (neighbors[i].x >= costmap_->getSizeInCellsX() || neighbors[i].x < 0)
-                {
-                    continue;
-                }
-                if (neighbors[i].y >= costmap_->getSizeInCellsY() || neighbors[i].y < 0)
-                {
-                    continue;
-                }
                 // costmap_->worldToMapEnforceBounds(neighbors[i][0], neighbors[i][1], neighbor_x, neighbor_y);
                 // ROS_INFO("Testing neighbor at (%d, %d)", neighbors[i][0], neighbors[i][1]);
                 auto temp_index = costmap_->getIndex(neighbors[i].x, neighbors[i].y);
                 // auto it = wavefront_cost_.find(temp_index);
                 auto v_it = visited.find(temp_index);
                 auto cost = costmap_->getCost(neighbors[i].x, neighbors[i].y);
+
+                // auto foo = costmap_ros_->getLayeredCostmap()->getPlugins();
+                // for (int j=0; j < foo->size(); j++)
+                // {
+                //     auto goo = (*foo)[j]->getName();
+                //     ROS_INFO("Found layer %s", goo);
+                // }
                 auto clean_state = clean_grid->data[temp_index];
 
                 if (clean_state > clean_threshold)
                 {
                     visited.insert(temp_index);
                 }
-                
+
                 // auto lv_it = local_visited.find(temp_index);
                 // auto foo = costmap_->getCost(neighbors[i][0], neighbors[i][1]);
                 // ROS_INFO("%d", it != wavefront_cost_.end());
                 if (cost < lethal_threshold_ && v_it == visited.end())
                 {
                     // auto weighted_cost = wavefront_cost_[temp_index] - alpha_*((double)costmap_->getCost(neighbors[i][0], neighbors[i][1]) / 255.0);
-                    unsigned int weighted_cost = wavefront_map[neighbors[i].x][neighbors[i].y];
-                    ROS_INFO("Found cost %d", weighted_cost);
+                    unsigned int weighted_cost = wavefront_map[neighbors[i].x][neighbors[i].y] * (255/max_wave_cost) - alpha*lethal_threshold_;
+                    // ROS_INFO("Found cost %d", weighted_cost);
                     // auto weighted_cost = wavefront_cost_[temp_index] + costmap_->getCost(neighbors[i][0], neighbors[i][1]);
                     if (weighted_cost > max_cost)
                     {
@@ -335,7 +376,7 @@
                 ROS_INFO("Executing the dprime search...");
                 // return true;
                 auto current_size = plan.size();
-                search_dprime(next_location, visited, plan);
+                search_dprime(next_location, visited, plan, clean_grid);
 
                 if (current_size == plan.size())
                 {
@@ -359,6 +400,10 @@
                 current_location = next_location;
             }
             
+            if (plan.size() >= max_path_length)
+            {
+                return;
+            }
         }
     }
 
@@ -368,7 +413,12 @@
         
         costmap_->worldToMap(start.pose.position.x, start.pose.position.y, start_loc.x, start_loc.y);
         costmap_->worldToMap(goal.pose.position.x, goal.pose.position.y, goal_loc.x, goal_loc.y);
-        computeWavefront(goal_loc, wavefront_map_);
+        if (last_goal.x != goal_loc.x || last_goal.y != goal_loc.y)
+        {
+            computeWavefront(goal_loc, wavefront_map_);
+            last_goal = goal_loc;
+        }
+
         planPath(start_loc, goal_loc, plan, wavefront_map_);
         return true;
     }

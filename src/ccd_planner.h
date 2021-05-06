@@ -5,6 +5,7 @@
  #include <costmap_2d/costmap_2d.h>
  #include <nav_core/base_global_planner.h>
  #include <geometry_msgs/PoseStamped.h>
+ #include <nav_msgs/OccupancyGrid.h>
  #include <angles/angles.h>
  #include <base_local_planner/world_model.h>
  #include <base_local_planner/costmap_model.h>
@@ -34,13 +35,20 @@ namespace ccd_planner {
         costmap_2d::Costmap2D* costmap_;
         costmap_2d::Costmap2DROS* costmap_ros_;
         bool initialized_ = false;
-        double alpha_ = 0.5;
-        // float radius = 0.3;
-        int cell_radius = 1;
-        unsigned int lethal_threshold_ = 100;
+        double alpha = 0.5;
+        double radius = 0.1;
+        double resolution = 0.05;
+        int max_path_length = 100;
+        // int cell_radius = 1;
+        int lethal_threshold_ = 150;
+        unsigned int max_wave_cost=0;
         int clean_threshold = 4;
         std::vector<std::vector<unsigned int>> wavefront_map_;
+        costmap_2d::MapLocation last_goal;
         nav_msgs::OccupancyGrid coverage_grid;
+
+        costmap_2d::MapLocation last_location_;
+        
         // std::set<int> visited_;
         // geometry_msgs::Pose last_goal;
         // bool mapped_ = false;
@@ -48,13 +56,12 @@ namespace ccd_planner {
         // std::vector<geometry_msgs::PoseStamped> last_plan;
 
         void planPath(const costmap_2d::MapLocation& start, const costmap_2d::MapLocation& goal, std::vector<geometry_msgs::PoseStamped>& plan,std::vector<std::vector<unsigned int>> wavefront_map);
-        void getNeighbors(const unsigned int x, const unsigned int y, costmap_2d::MapLocation (&neighbors)[4]);
-        void getNeighborsFine(const unsigned int x, const unsigned int y, costmap_2d::MapLocation (&neighbors)[4]);
+        void getNeighbors(const unsigned int x, const unsigned int y, std::vector<costmap_2d::MapLocation>& neighbors);
+        void getNeighborsFine(const unsigned int x, const unsigned int y, std::vector<costmap_2d::MapLocation>& neighbors);
         void computeWavefront(const costmap_2d::MapLocation& goal, std::vector<std::vector<unsigned int>>& wavefront_map);
         void markOverlappedAsVisited(const costmap_2d::MapLocation& pos, std::set<int>& visited);
-        void search_dprime(const costmap_2d::MapLocation& start_location, std::set<int>& visited_sofar, std::vector<geometry_msgs::PoseStamped>& plan);
+        void search_dprime(const costmap_2d::MapLocation& start_location, std::set<int>& visited_sofar, std::vector<geometry_msgs::PoseStamped>& plan, nav_msgs::OccupancyGridConstPtr clean_grid);
         void appendPose(const costmap_2d::MapLocation& location, std::vector<geometry_msgs::PoseStamped>& plan);
-        void GlobalPlanner::setCoverageGrid(const nav_msgs::OccupancyGrid& grid);
     };
 };
 #endif
