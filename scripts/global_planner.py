@@ -5,11 +5,11 @@ from PIL.Image import Image, new, open, fromarray
 import math
 import time
 
-class Vertex:
-    def __init__(self, pose, previous_pose=None, cost=0) -> None:
-        self.pose = pose
-        self.previous_pose = previous_pose
-        self.cost = cost
+# class Vertex:
+#     def __init__(self, pose, previous_pose=None, cost=0) -> None:
+#         self.pose = pose
+#         self.previous_pose = previous_pose
+#         self.cost = cost
 
 # the threshold to define an obstacle in the costmap
 lethal_threshold = 225
@@ -26,7 +26,9 @@ bot_radius = 3
 img = open('map.pgm')
 map = np.copy(np.transpose(img))
 
+
 def mark_as_visited(point, visited: set):
+    '''Mark all of the points underneath the robot as visited'''
     for i in range(-bot_radius, bot_radius+1):
         x = point[0] + i
         for j in range(-bot_radius, bot_radius+1):
@@ -54,10 +56,12 @@ def get_neighbors(point, use_4connected=True):
             (point[0], point[1]+1),
         ]
 
+    # Only return points inside the grid
     return [pt for pt in possible_neighbors if pt[0] >= 0 and pt[0] < map.shape[0] and pt[1] >= 0 and pt[1] < map.shape[1]]
 
-def get_neighbors_(point, visited):
-    '''Get the neighbors of the given node.'''
+def find_new_neighbors(point, visited):
+    '''Find new neighbors by tracing a path out from the center of 
+        the robot.'''
     possible_neighbors = []
     for i in range(bot_radius):
         x = point[0] + i
@@ -87,6 +91,7 @@ def get_neighbors_(point, visited):
         if map[point[0], y] > free_space - inflation_radius:
             possible_neighbors.append((point[0], y))
 
+    # only return points inside the map
     return [pt for pt in possible_neighbors if pt[0] >= 0 and pt[0] < map.shape[0] and pt[1] >= 0 and pt[1] < map.shape[1]]
 
 def propagate_wavefront(start):
@@ -109,10 +114,12 @@ def propagate_wavefront(start):
     return wavefront_cost
 
 def propogate_obsfield():
-    '''Propogate potential fields around the obstacles in the map'''
-    # obs_field = {}
+    '''Propogate potential fields around the obstacles in the map.
+        This will also inflate obstacles to prevent collisions.'''
+    # For every cell in the map
     for i in range(map.shape[0]):
         for j in range(map.shape[1]):
+            # Skip if the cell is not a hard obstacle.
             c = map[i, j]
             if c != 0:
                 continue
@@ -120,16 +127,22 @@ def propogate_obsfield():
             queue.append((i,j))
             closed = set()
             closed.add((i,j))
-            # obs_field[i, j] = -(inflation_radius+1)
+            # while the queue is not empty, keep checking cells.
             while len(queue) > 0:
                 current = queue.popleft()
-                neighbors = [pt for pt in get_neighbors(current, use_4connected=False) if pt not in closed and map[pt[0],pt[1]] != 0]
+                # Get all the neighbors that are not obstacles
+                neighbors = [pt for pt in get_neighbors(current, use_4connected=False) 
+                    if pt not in closed and map[pt[0],pt[1]] != 0]
                 for neighbor in neighbors:
                     closed.add(neighbor)
+                    # if the robot would be in a collision when the robot's center point is here
+                    # mark it as an inflated obstacle.
                     if current[0] > i - bot_radius and current[0] < i + bot_radius and \
                         current[1] > j - bot_radius and current[1] < j + bot_radius:
                         map[neighbor[0], neighbor[1]] = 10
                         queue.append(neighbor)
+                    # otherwise assign decreasing values in the map to signify that the robot
+                    # is approaching an obstacle
                     else:
                         if map[current[0],current[1]] <= 10:
                             map[neighbor[0],neighbor[1]] = free_space - inflation_radius
@@ -138,21 +151,6 @@ def propogate_obsfield():
                             map[neighbor[0],neighbor[1]] = map[current[0],current[1]] + 1
                             if map[neighbor[0],neighbor[1]] < free_space:
                                 queue.append(neighbor)
-
-                #     for neighbor in get_neighbors(current, use_4connected=False):
-                #         n_c = map[neighbor[0], neighbor[1]]
-                #         if neighbor not in obs_field.keys() and n_c > lethal_threshold:
-                #             queue.append(neighbor)
-                # else:
-                #     new_cost = obs_field[current] + 1
-                #     if new_cost >= 0:
-                #         continue
-                #     for neighbor in get_neighbors(current, use_4connected=False):
-                #         n_c = map[neighbor[0], neighbor[1]]
-                #         if neighbor not in obs_field.keys() and n_c > lethal_threshold:
-                #             queue.append(neighbor)
-                #             obs_field[neighbor] = new_cost
-    return
 
                 
 def dstar_prime(start, visited, valid_pts):
@@ -183,36 +181,33 @@ def dstar_prime(start, visited, valid_pts):
 
 
 def dstar_search(start, wavefront_cost):
-    '''the main search algo. Always follow the lowest cost cell in the costmap.
+    '''the main search algo. Always follow the max cost cell in the costmap.
         Loop until the algo cannot find anymore unvisited nodes.'''
     current = start
     path = [start]
     closed = set()
-    # closed.add(current)
     mark_as_visited(start, closed)
 
     while True:
-        new_neighbors = get_neighbors_(current, closed)
+        new_neighbors = find_new_neighbors(current, closed)
         max_neighbor = None
         max_cost = None
         for neighbor in new_neighbors:
             if neighbor not in closed and neighbor in wavefront_cost.keys():
                 w_cost = wavefront_cost[neighbor]
                 print(f'Testing {neighbor} with w_cost {w_cost}...')
-                # if neighbor in obstacle_cost.keys():
-                    # obs_cost = obstacle_cost[neighbor]
-                    # print(f'Neighbor has a obs_cost of {obs_cost}')
-                # else:
-                    # obs_cost = 0
                 c = (alpha*(map[neighbor[0],neighbor[1]]-250) + beta*w_cost) / 2
                 if max_cost is None or c > max_cost:
                     max_neighbor = neighbor
                     max_cost = c
         
+        # if you couldn't find a neighbor, execute the dprime search
         if max_neighbor is None:
             new_path = dstar_prime(current, closed, wavefront_cost.keys())
+            # if a path is still not found, we're done!
             if new_path is None:
                 return path
+            # otherwise extend the path to the new location
             else:
                 new_path.reverse()
                 path.extend(new_path)
@@ -236,9 +231,6 @@ max_w = float(max(wavefront_cost.values()))
 wavefront_cost = {x: (wavefront_cost[x] / max_w) for x in wavefront_cost }
 # Calculate the obstacle field
 propogate_obsfield()
-# Normalize that too...
-# max_o = float(max(obs_field.values()))
-# obs_field = {x: (obs_field[x] / max_o) for x in obs_field }
 # Find the path
 path = dstar_search(start, wavefront_cost)
 
