@@ -123,6 +123,7 @@ def propogate_obsfield():
         for j in range(map.shape[1]):
             # Skip if the cell is not a hard obstacle.
             c = map[i, j]
+            print(f'Populating occupancy map: {(i,j)}')
             if c != 0:
                 continue
             occ_map[i,j] = float('inf')
