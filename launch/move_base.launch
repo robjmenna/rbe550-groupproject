@@ -9,6 +9,9 @@
   <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
     <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />
     <param name="base_global_planner" value="ccd_planner/GlobalPlanner" />
+    <!-- <param name="base_local_planner" value="teb_local_planner/TebLocalPlannerROS" />
+      <param name="controller_frequency" value="5.0" />
+      <param name="controller_patience" value="15.0" /> -->
     <rosparam file="$(find turtlebot3_navigation)/param/costmap_common_params_$(arg model).yaml" command="load" ns="global_costmap" />
     <rosparam file="$(find turtlebot3_navigation)/param/costmap_common_params_$(arg model).yaml" command="load" ns="local_costmap" />
     <rosparam file="$(find turtlebot3_navigation)/param/local_costmap_params.yaml" command="load" />
@@ -17,16 +20,21 @@
     <rosparam file="$(find turtlebot3_navigation)/param/dwa_local_planner_params_$(arg model).yaml" command="load" />
     <remap from="cmd_vel" to="$(arg cmd_vel_topic)"/>
     <remap from="odom" to="$(arg odom_topic)"/>
-    <param name="alpha" value="0.75" />
-    <param name="radius" value="0.1" />
+    <param name="alpha" value="1.5" />
+    <param name="radius" value="0.2" />
     <param name="resolution" value="0.05" />
-    <param name="planner_frequency" value="0.5" />
+    <param name="planner_frequency" value="0.1" />
     <param name="lethal_threshold" value="240" />
+    <param name="global_costmap/inflation_radius" value="0.55" />
+    <param name="local_costmap/inflation_layer/enabled" value="false" />
+    <param name="local_costmap/obstacle_layer/enabled" value="true" />
+    <param name="DWAPlannerROS/path_distance_bias" value="100" />
+    <param name="DWAPlannerROS/goal_distance_bias" value="0" />
   </node>
 
   <!-- coverage_progress -->
   <node pkg="ccd_planner" type="coverage_progress" name="coverage_progress" output="screen">
-    <param name="coverage_radius" type="double" value="0.1" />
+    <param name="coverage_radius" type="double" value="0.2" />
     <param name="coverage_effectivity" type="double" value="100" />
     <!-- <rosparam file="$(find ccd_planner)/maps/map.yaml"/> -->
   </node>

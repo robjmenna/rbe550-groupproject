@@ -36,9 +36,10 @@ namespace ccd_planner {
         costmap_2d::Costmap2DROS* costmap_ros_;
         bool initialized_ = false;
         double alpha = 0.5;
+        double beta = 0.5;
         double radius = 0.1;
         double resolution = 0.05;
-        int max_path_length = 100;
+        int max_path_length = 50;
         // int cell_radius = 1;
         int lethal_threshold_ = 150;
         unsigned int max_wave_cost=0;

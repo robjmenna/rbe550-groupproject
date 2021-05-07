@@ -26,6 +26,7 @@
             costmap_ = costmap_ros->getCostmap();
             costmap_ros_ = costmap_ros;
             ros::param::get("~alpha", alpha);
+            ros::param::get("~beta", alpha);
             ros::param::get("~radius", radius);
             ros::param::get("~resolution", resolution);
             ros::param::get("~lethal_threshold", lethal_threshold_);
@@ -118,7 +119,8 @@
 
     void GlobalPlanner::markOverlappedAsVisited(const costmap_2d::MapLocation& pos, std::set<int>& visited)
     {
-        auto cell_radius = radius / resolution;
+        int cell_radius = 2*(radius / resolution);
+        ROS_INFO("Cell radius: %d", cell_radius);
         auto init_pos = -cell_radius;
         auto final_pos = cell_radius + 1;
         for(int i=init_pos; i < final_pos; i++)
@@ -155,7 +157,7 @@
                 auto neighbor_index = costmap_->getIndex(neighbors[i].x, neighbors[i].y);
                 // auto it = wavefront_cost_.find(current_index);
                 auto ret = closed.insert(neighbor_index);
-                if (ret.second)
+                if (!ret.second)
                 {
                     continue;
                 }
@@ -187,6 +189,10 @@
                         costmap_->indexToCells(next, l.x, l.y);
                         markOverlappedAsVisited(l, visited_sofar);
                         new_path.push_back(l);
+                        if (plan.size() + new_path.size() >= max_path_length)
+                        {
+                            break;
+                        }
                         next = vertex_table[next];
                     }
 
@@ -210,7 +216,7 @@
         std::vector<costmap_2d::MapLocation>& neighbors)
     {
         // costmap_2d::MapLocation neighbors_ [4];
-        int max_radius = 4*(radius / resolution);
+        int max_radius = 8*(radius / resolution);
 
         for (int i=0; i < 2; i++)
         {
@@ -229,6 +235,12 @@
                 }
 
                 if (x_ < 0 || x_ >= costmap_->getSizeInCellsX())
+                {
+                    break;
+                }
+
+                auto cost = costmap_->getCost(x_, y);
+                if (cost >= lethal_threshold_)
                 {
                     break;
                 }
@@ -266,6 +278,12 @@
                     y_ = y - j;
                 }
                 if (y_ < 0 || y_ >= costmap_->getSizeInCellsY())
+                {
+                    break;
+                }
+
+                auto cost = costmap_->getCost(x, y_);
+                if (cost >= lethal_threshold_)
                 {
                     break;
                 }
@@ -394,7 +412,7 @@
         {
             // unsigned int next_index;
             // double cost = 0;
-            unsigned int max_cost = 0;
+            double max_cost = -99999;
             costmap_2d::MapLocation next_location;
 
             // unsigned int next_x;
@@ -443,8 +461,10 @@
                 if (cost < lethal_threshold_ && v_it == visited.end())
                 {
                     // auto weighted_cost = wavefront_cost_[temp_index] - alpha_*((double)costmap_->getCost(neighbors[i][0], neighbors[i][1]) / 255.0);
-                    unsigned int weighted_cost = wavefront_map[neighbors[i].x][neighbors[i].y] * (255/max_wave_cost) - alpha*lethal_threshold_;
-                    // ROS_INFO("Found cost %d", weighted_cost);
+                    auto wave_cost = beta*wavefront_map[neighbors[i].x][neighbors[i].y];
+                    double obs_cost = alpha*lethal_threshold_;
+                    int weighted_cost = wave_cost - obs_cost;
+                    ROS_INFO("Found cost %d; wave cost %d; obs cost: %d", weighted_cost, wave_cost, obs_cost);
                     // auto weighted_cost = wavefront_cost_[temp_index] + costmap_->getCost(neighbors[i][0], neighbors[i][1]);
                     if (weighted_cost > max_cost)
                     {
@@ -483,10 +503,11 @@
                 current_location = next_location;
             }
             
-            if (plan.size() >= max_path_length)
-            {
-                return;
-            }
+            // if (plan.size() >= max_path_length)
+            // {
+            //     ROS_INFO("Reached max plan length: %d", max_path_length);
+            //     return;
+            // }
         }
     }
 
