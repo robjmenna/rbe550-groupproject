@@ -56,7 +56,7 @@ namespace ccd_planner {
         // std::vector<geometry_msgs::PoseStamped> last_plan;
 
         void planPath(const costmap_2d::MapLocation& start, const costmap_2d::MapLocation& goal, std::vector<geometry_msgs::PoseStamped>& plan,std::vector<std::vector<unsigned int>> wavefront_map);
-        void getNeighbors(const unsigned int x, const unsigned int y, std::vector<costmap_2d::MapLocation>& neighbors);
+        void getNeighbors(const unsigned int x, const unsigned int y, const nav_msgs::OccupancyGridConstPtr clean_grid, std::set<int>& visited_sofar, std::vector<costmap_2d::MapLocation>& neighbors);
         void getNeighborsFine(const unsigned int x, const unsigned int y, std::vector<costmap_2d::MapLocation>& neighbors);
         void computeWavefront(const costmap_2d::MapLocation& goal, std::vector<std::vector<unsigned int>>& wavefront_map);
         void markOverlappedAsVisited(const costmap_2d::MapLocation& pos, std::set<int>& visited);

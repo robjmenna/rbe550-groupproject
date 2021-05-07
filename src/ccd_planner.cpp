@@ -166,6 +166,11 @@
                 auto clean_state = clean_grid->data[neighbor_index];
                 vertex_table[neighbor_index] = current_index;
 
+                if (clean_state < clean_threshold)
+                {
+                    visited_sofar.insert(neighbor_index);
+                }
+
                 if (cost < lethal_threshold_ && clean_state > clean_threshold)
                 {
                     // closed.insert(neighbor_index);
@@ -200,29 +205,107 @@
         }
     }
 
-    void GlobalPlanner::getNeighbors(const unsigned int x, const unsigned int y, std::vector<costmap_2d::MapLocation>& neighbors)
+    void GlobalPlanner::getNeighbors(const unsigned int x, const unsigned int y, 
+        const nav_msgs::OccupancyGridConstPtr clean_grid, std::set<int>& visited_sofar, 
+        std::vector<costmap_2d::MapLocation>& neighbors)
     {
-        costmap_2d::MapLocation neighbors_ [4];
-        auto cell_radius = radius / resolution;
-        neighbors_[0].x = x + (cell_radius + 1);
-        neighbors_[0].y = y;
-        neighbors_[1].x = x - (cell_radius + 1);
-        neighbors_[1].y = y;
-        neighbors_[2].x = x;
-        neighbors_[2].y = y + (cell_radius + 1);
-        neighbors_[3].x = x;
-        neighbors_[3].y = y - (cell_radius + 1);
+        // costmap_2d::MapLocation neighbors_ [4];
+        int max_radius = 4*(radius / resolution);
 
-        for (int i=0; i < 4; i++)
+        for (int i=0; i < 2; i++)
         {
-            auto x_good = neighbors_[i].x >= 0 && neighbors_[i].x < costmap_->getSizeInCellsX();
-            auto y_good = neighbors_[i].y >= 0 && neighbors_[i].y < costmap_->getSizeInCellsY();
-
-            if (x_good && y_good)
+            // int x_inc = 0;
+            for (int j=0; j<max_radius; j++)
             {
-                neighbors.push_back(neighbors_[i]);
+                // x_inc++;
+                auto x_ = 0;
+                if (i == 0)
+                {
+                    x_ = x + j;
+                }
+                else
+                {
+                    x_ = x - j;
+                }
+
+                if (x_ < 0 || x_ >= costmap_->getSizeInCellsX())
+                {
+                    break;
+                }
+
+                auto index = costmap_->getIndex(x_, y);
+                auto clean_state = clean_grid->data[index];
+                if (clean_state < clean_threshold || visited_sofar.find(index) != visited_sofar.end())
+                {
+                    visited_sofar.insert(index);
+                }
+                else
+                {
+                    costmap_2d::MapLocation temp;
+                    temp.x = x_;
+                    temp.y = y;
+                    neighbors.push_back(temp);
+                }
+
             }
         }
+
+        for (int i=0; i < 2; i++)
+        {
+            // int y_inc = 0;
+            for (int j=0; j<max_radius; j++)
+            {
+                // y_inc++;
+                auto y_ = 0;
+                if (i == 0)
+                {
+                    y_ = y + j;
+                }
+                else
+                {
+                    y_ = y - j;
+                }
+                if (y_ < 0 || y_ >= costmap_->getSizeInCellsY())
+                {
+                    break;
+                }
+
+                auto index = costmap_->getIndex(x, y_);
+                auto clean_state = clean_grid->data[index];
+                if (clean_state < clean_threshold || visited_sofar.find(index) != visited_sofar.end())
+                {
+                    visited_sofar.insert(index);
+                }
+                else
+                {
+                    costmap_2d::MapLocation temp;
+                    temp.x = x;
+                    temp.y = y_;
+                    neighbors.push_back(temp);
+                }
+            }
+        }
+
+        // auto cell_radius = ;
+        // neighbors_[0].x = x + (cell_radius + 1);
+        // neighbors_[0].y = y;
+        // neighbors_[1].x = x - (cell_radius + 1);
+        // neighbors_[1].y = y;
+        // neighbors_[2].x = x;
+        // neighbors_[2].y = y + (cell_radius + 1);
+        // neighbors_[3].x = x;
+        // neighbors_[3].y = y - (cell_radius + 1);
+
+        // for (int i=0; i < 4; i++)
+        // {
+        //     auto x_good = neighbors_[i].x >= 0 && neighbors_[i].x < costmap_->getSizeInCellsX();
+        //     auto y_good = neighbors_[i].y >= 0 && neighbors_[i].y < costmap_->getSizeInCellsY();
+
+        //     if (x_good && y_good)
+        //     {
+        //         neighbors.push_back(neighbors_[i]);
+        //     }
+        // }
     }
 
     void GlobalPlanner::getNeighborsFine(const unsigned int x, const unsigned int y, std::vector<costmap_2d::MapLocation>& neighbors)
@@ -320,7 +403,7 @@
 
             auto current_x = current_location.x;
             auto current_y = current_location.y;
-            getNeighbors(current_x, current_y, neighbors);
+            getNeighbors(current_x, current_y, clean_grid, visited, neighbors);
 
             // neighbors[0][0] = current_x + cell_radius + 2;
             // neighbors[0][1] = current_y;
@@ -338,7 +421,6 @@
                 // ROS_INFO("Testing neighbor at (%d, %d)", neighbors[i][0], neighbors[i][1]);
                 auto temp_index = costmap_->getIndex(neighbors[i].x, neighbors[i].y);
                 // auto it = wavefront_cost_.find(temp_index);
-                auto v_it = visited.find(temp_index);
                 auto cost = costmap_->getCost(neighbors[i].x, neighbors[i].y);
 
                 // auto foo = costmap_ros_->getLayeredCostmap()->getPlugins();
@@ -349,11 +431,12 @@
                 // }
                 auto clean_state = clean_grid->data[temp_index];
 
-                if (clean_state > clean_threshold)
+                if (clean_state < clean_threshold)
                 {
                     visited.insert(temp_index);
                 }
 
+                auto v_it = visited.find(temp_index);
                 // auto lv_it = local_visited.find(temp_index);
                 // auto foo = costmap_->getCost(neighbors[i][0], neighbors[i][1]);
                 // ROS_INFO("%d", it != wavefront_cost_.end());
