@@ -69,28 +69,28 @@ def find_new_neighbors(point, visited):
         x = point[0] + i
         if (x,point[1]) in visited:
             continue
-        if map[x, point[1]] > free_space - inflation_radius:
+        if occ_map[x, point[1]] < float('inf'):
             possible_neighbors.append((x, point[1]))
 
     for i in range(bot_radius):
         x = point[0] - i
         if (x,point[1]) in visited:
             continue
-        if map[x, point[1]] > free_space - inflation_radius:
+        if occ_map[x, point[1]] < float('inf'):
             possible_neighbors.append((x, point[1]))
 
     for i in range(bot_radius):
         y = point[1] + i
         if (point[0], y) in visited:
             continue
-        if map[point[0], y] > free_space - inflation_radius:
+        if occ_map[point[0], y] < float('inf'):
             possible_neighbors.append((point[0], y))
 
     for i in range(bot_radius):
         y = point[1] - i
         if (point[0], y) in visited:
             continue
-        if map[point[0], y] > free_space - inflation_radius:
+        if occ_map[point[0], y] < float('inf'):
             possible_neighbors.append((point[0], y))
 
     # only return points inside the map
@@ -107,8 +107,8 @@ def propagate_wavefront(start):
         current_point = queue.popleft()
         neighbors = get_neighbors(current_point, use_4connected=False)
         for n in neighbors:
-            n_cost = map[n[0], n[1]]
-            if n not in visited and n_cost > lethal_threshold:
+            n_cost = occ_map[n[0], n[1]]
+            if n not in visited and n_cost < float('inf'):
                 visited.add(n)
                 wavefront_cost[n] = wavefront_cost[current_point] + 1
                 queue.append(n)
@@ -135,7 +135,7 @@ def propogate_obsfield():
                 current = queue.popleft()
                 # Get all the neighbors that are not obstacles
                 neighbors = [pt for pt in get_neighbors(current) 
-                    if pt not in closed and map[pt[0],pt[1]] != 0]
+                    if pt not in closed]
                 for neighbor in neighbors:
                     closed.add(neighbor)
                     # if the robot would be in a collision when the robot's center point is here
@@ -148,15 +148,17 @@ def propogate_obsfield():
                     # is approaching an obstacle
                     else:
                         if occ_map[current[0],current[1]] == float('inf'):
-                            occ_map[neighbor[0],neighbor[1]] = mc + 1
+                            if occ_map[neighbor[0], neighbor[1]] < mc + 1:
+                                occ_map[neighbor[0],neighbor[1]] = mc + 1
                             queue.append(neighbor)
                         elif occ_map[current[0],current[1]] < float('inf') and occ_map[current[0],current[1]] > 0:
-                            occ_map[neighbor[0],neighbor[1]] = occ_map[current[0],current[1]] - 1
-                            if map[neighbor[0],neighbor[1]] > 0:
+                            if occ_map[neighbor[0], neighbor[1]] < occ_map[current[0],current[1]] - 1:
+                                occ_map[neighbor[0],neighbor[1]] = occ_map[current[0],current[1]] - 1
+                            if occ_map[neighbor[0],neighbor[1]] > 0:
                                 queue.append(neighbor)
 
                 
-def dstar_prime(start, visited, valid_pts):
+def dstar_prime(start, visited):
     '''Execute a bfs search for the nearest unvisited node. 
         Used when the planner gets stuck to find the quickest way out.'''
     path = {start: None}
@@ -173,7 +175,7 @@ def dstar_prime(start, visited, valid_pts):
     while len(queue) > 0:
         current = queue.popleft()
         for neighbor in get_neighbors(current):
-            if neighbor in valid_pts and neighbor not in closed:
+            if occ_map[neighbor[0],neighbor[1]] < float('inf') and neighbor not in closed:
                 closed.add(neighbor)
                 path[neighbor] = current
                 if neighbor not in visited:
@@ -196,7 +198,7 @@ def dstar_search(start, wavefront_cost):
         max_neighbor = None
         max_cost = None
         for neighbor in new_neighbors:
-            if neighbor not in closed and neighbor in wavefront_cost.keys():
+            if neighbor not in closed and occ_map[neighbor[0],neighbor[1]] < float('inf'):
                 w_cost = wavefront_cost[neighbor]
                 print(f'Testing {neighbor} with w_cost {w_cost}...')
                 c = beta*w_cost - alpha*occ_map[neighbor[0],neighbor[1]]
@@ -206,7 +208,7 @@ def dstar_search(start, wavefront_cost):
         
         # if you couldn't find a neighbor, execute the dprime search
         if max_neighbor is None:
-            new_path = dstar_prime(current, closed, wavefront_cost.keys())
+            new_path = dstar_prime(current, closed)
             # if a path is still not found, we're done!
             if new_path is None:
                 return path
@@ -234,6 +236,7 @@ max_w = float(max(wavefront_cost.values()))
 wavefront_cost = {x: (wavefront_cost[x] / max_w) for x in wavefront_cost }
 # Calculate the obstacle field
 propogate_obsfield()
+np.savetxt('foo.csv', occ_map, delimiter=',')
 # Find the path
 path = dstar_search(start, wavefront_cost)
 
