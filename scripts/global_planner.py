@@ -14,6 +14,7 @@ import time
 # the threshold to define an obstacle in the costmap
 lethal_threshold = 225
 free_space = 254
+mc = 4
 # The starting position
 start = (20, 60)
 goal = (30, 60)
@@ -23,8 +24,9 @@ beta = 1.0
 inflation_radius = 1
 bot_radius = 3
 # The map file
-img = open('map.pgm')
-map = np.copy(np.transpose(img))
+img = open('/home/robert/catkin_ws/src/ccd_planner/maps/map.pgm')
+map = np.transpose(img)
+occ_map = np.zeros(map.shape, dtype='float')
 
 
 def mark_as_visited(point, visited: set):
@@ -123,6 +125,7 @@ def propogate_obsfield():
             c = map[i, j]
             if c != 0:
                 continue
+            occ_map[i,j] = float('inf')
             queue = deque()
             queue.append((i,j))
             closed = set()
@@ -131,7 +134,7 @@ def propogate_obsfield():
             while len(queue) > 0:
                 current = queue.popleft()
                 # Get all the neighbors that are not obstacles
-                neighbors = [pt for pt in get_neighbors(current, use_4connected=False) 
+                neighbors = [pt for pt in get_neighbors(current) 
                     if pt not in closed and map[pt[0],pt[1]] != 0]
                 for neighbor in neighbors:
                     closed.add(neighbor)
@@ -139,17 +142,17 @@ def propogate_obsfield():
                     # mark it as an inflated obstacle.
                     if current[0] > i - bot_radius and current[0] < i + bot_radius and \
                         current[1] > j - bot_radius and current[1] < j + bot_radius:
-                        map[neighbor[0], neighbor[1]] = 10
+                        occ_map[neighbor[0], neighbor[1]] = float('inf')
                         queue.append(neighbor)
                     # otherwise assign decreasing values in the map to signify that the robot
                     # is approaching an obstacle
                     else:
-                        if map[current[0],current[1]] <= 10:
-                            map[neighbor[0],neighbor[1]] = free_space - inflation_radius
+                        if occ_map[current[0],current[1]] == float('inf'):
+                            occ_map[neighbor[0],neighbor[1]] = mc + 1
                             queue.append(neighbor)
-                        elif map[current[0],current[1]] >= free_space - inflation_radius:
-                            map[neighbor[0],neighbor[1]] = map[current[0],current[1]] + 1
-                            if map[neighbor[0],neighbor[1]] < free_space:
+                        elif occ_map[current[0],current[1]] < float('inf') and occ_map[current[0],current[1]] > 0:
+                            occ_map[neighbor[0],neighbor[1]] = occ_map[current[0],current[1]] - 1
+                            if map[neighbor[0],neighbor[1]] > 0:
                                 queue.append(neighbor)
 
                 
@@ -196,7 +199,7 @@ def dstar_search(start, wavefront_cost):
             if neighbor not in closed and neighbor in wavefront_cost.keys():
                 w_cost = wavefront_cost[neighbor]
                 print(f'Testing {neighbor} with w_cost {w_cost}...')
-                c = (alpha*(map[neighbor[0],neighbor[1]]-250) + beta*w_cost) / 2
+                c = beta*w_cost - alpha*occ_map[neighbor[0],neighbor[1]]
                 if max_cost is None or c > max_cost:
                     max_neighbor = neighbor
                     max_cost = c
