@@ -25,7 +25,7 @@
   </node>
 
   <!-- coverage_progress -->
-  <node pkg="full_coverage_path_planner" type="coverage_progress" name="coverage_progress" output="screen">
+  <node pkg="ccd_planner" type="coverage_progress" name="coverage_progress" output="screen">
     <param name="coverage_radius" type="double" value="0.1" />
     <param name="coverage_effectivity" type="double" value="100" />
     <!-- <rosparam file="$(find ccd_planner)/maps/map.yaml"/> -->
