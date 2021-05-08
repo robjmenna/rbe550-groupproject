@@ -287,6 +287,11 @@ found_collision = True
 last_index = -1
 path = []
 initial_run = True
+im_obj = plt.imshow(img, cmap='gray')
+plt.show(block=False)
+plt.xlim((0, map.shape[0]))
+plt.ylim((0, map.shape[1]))
+input()
 while found_collision:
     if initial_run:
         path = dstar_search(start, wavefront_cost)
@@ -296,10 +301,7 @@ while found_collision:
         path = dstar_search(path[last_index], wavefront_cost)
         last_index = -1
     
-    plt.xlim((0, map.shape[0]))
-    plt.ylim((0, map.shape[1]))
     
-    im_obj = plt.imshow(img, cmap='gray')
     axes = plt.gca()
     line, = axes.plot(x, y, 'o-')
     for pt in path:
@@ -331,10 +333,7 @@ while found_collision:
             im_obj.set_data(img)
             plt.draw()
             plt.pause(1e-17)
-            time.sleep(0.005)
+            time.sleep(0.05)
 
 # np.savetxt('heatmap.csv', heat_map, delimiter=',')
-print(np.max(heat_map))
-print(np.min(heat_map))
-print(np.mean(heat_map))
 plt.show()
