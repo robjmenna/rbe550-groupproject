@@ -1,34 +1,34 @@
-from collections import namedtuple, deque
-from operator import index, truediv
+from collections import deque
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL.Image import Image, new, open, fromarray
-import math
+from PIL.Image import open
 import time
 
 X=0 
 Y=1
 
-# the threshold to define an obstacle in the costmap
-lethal_threshold = 225
-free_space = 254
+# The Hesitancy to add to the occupancy map around inflated obstacles
 mc = 4
 # The starting position
 start = (200, 200)
 goal = (200, 210)
 # the weight given to the potential fields around the obstacles in the costmap
 alpha = 0
-beta = 1.0
-inflation_radius = 1
+beta = 1
 bot_radius = 3
 # The map file
 img = open('/home/robert/catkin_ws/src/ccd_planner/maps/CustomRoom.pgm')
+# A 2d array of the static map
 map = np.copy(np.transpose(img))
+# The occupancy map, holds the inflated obstacles
 occ_map = np.zeros(map.shape, dtype='float')
+# track the cleaned cells
 cleaned_map = set()
+# Used for generating figures for the report
 heat_map = np.zeros(map.shape, dtype='int')
 
 def paint_visited(point):
+    '''Mark the visited nodes as the robot travels the map.'''
     for i in range(-bot_radius, bot_radius+1):
         x = point[0] + i
         for j in range(-bot_radius, bot_radius+1):
@@ -46,6 +46,8 @@ def mark_as_visited(point, visited: set):
             visited.add((x, y))
 
 def test_for_collision(point):
+    '''test to see if a move to the given point is valid
+        If not, update the occupancy map.'''
     # update the occupancy map
     collision = False
     for i in range(point[X]-bot_radius, point[X]+bot_radius):
@@ -253,6 +255,9 @@ def dstar_search(start, wavefront_cost):
 
 def add_object(shape):
     map[shape[0]:shape[1],shape[2]:shape[3]] = np.zeros((shape[1]-shape[0], shape[3]-shape[2]), dtype='int8')
+    for i in range(shape[0],shape[1]):
+        for j in range(shape[2], shape[3]):
+            img.putpixel((i,j), 0)
 
 # Calculate the wavefront cost...
 wavefront_cost = propagate_wavefront(goal)
@@ -329,4 +334,7 @@ while found_collision:
             time.sleep(0.005)
 
 # np.savetxt('heatmap.csv', heat_map, delimiter=',')
+print(np.max(heat_map))
+print(np.min(heat_map))
+print(np.mean(heat_map))
 plt.show()
