@@ -5,6 +5,9 @@ from PIL.Image import Image, new, open, fromarray
 import math
 import time
 
+X=0 
+Y=1
+
 # class Vertex:
 #     def __init__(self, pose, previous_pose=None, cost=0) -> None:
 #         self.pose = pose
@@ -16,18 +19,26 @@ lethal_threshold = 225
 free_space = 254
 mc = 4
 # The starting position
-start = (20, 60)
-goal = (30, 60)
+start = (200, 200)
+goal = (200, 210)
 # the weight given to the potential fields around the obstacles in the costmap
 alpha = 0
 beta = 1.0
 inflation_radius = 1
 bot_radius = 3
 # The map file
-img = open('/home/robert/catkin_ws/src/ccd_planner/maps/map.pgm')
+img = open('/home/robert/catkin_ws/src/ccd_planner/maps/CustomRoom.pgm')
 map = np.transpose(img)
 occ_map = np.zeros(map.shape, dtype='float')
+cleaned_map = np.zeros(map.shape, dtype='bool')
 
+
+def paint_visited(point):
+    for i in range(-bot_radius, bot_radius+1):
+        x = point[0] + i
+        for j in range(-bot_radius, bot_radius+1):
+            y = point[1] + j
+            img.putpixel((x,y), 100)
 
 def mark_as_visited(point, visited: set):
     '''Mark all of the points underneath the robot as visited'''
@@ -36,6 +47,12 @@ def mark_as_visited(point, visited: set):
         for j in range(-bot_radius, bot_radius+1):
             y = point[1] + j
             visited.add((x, y))
+
+# def test_for_collision(point):
+#     temp_result = occ_map[
+#         point[X]-bot_radius:point[X]+bot_radius,
+#         point[Y]-bot_radius:point[Y]+bot_radius] == float('inf')
+#     return any(temp_result)
 
 def get_neighbors(point, use_4connected=True):
     '''Get the neighbors of the given node.'''
@@ -229,6 +246,8 @@ def dstar_search(start, wavefront_cost):
 
     return path
 
+def add_object(shape):
+    occ_map[shape[0]:shape[1],shape[2]:shape[3]] = float('inf') * np.ones((shape[1]-shape[0], shape[3]-shape[2]), dtype='float')
 
 # Calculate the wavefront cost...
 wavefront_cost = propagate_wavefront(goal)
@@ -236,8 +255,9 @@ wavefront_cost = propagate_wavefront(goal)
 max_w = float(max(wavefront_cost.values()))
 wavefront_cost = {x: (wavefront_cost[x] / max_w) for x in wavefront_cost }
 # Calculate the obstacle field
-propogate_obsfield()
-np.savetxt('foo.csv', occ_map, delimiter=',')
+# propogate_obsfield()
+# np.savetxt('custom_room_occ_map_v2.csv', occ_map, delimiter=',')
+occ_map = np.loadtxt('custom_room_occ_map_v2.csv', delimiter=',')
 # Find the path
 path = dstar_search(start, wavefront_cost)
 
@@ -245,21 +265,26 @@ path = dstar_search(start, wavefront_cost)
 x = []
 y = []
 
-plt.imshow(img, cmap='gray')
+fig, ax = plt.subplots()
+im_obj = plt.imshow(img, cmap='gray')
 plt.xlim((0, map.shape[0]))
 plt.ylim((0, map.shape[1]))
+ax.xaxis.set_ticks([])
+ax.yaxis.set_ticks([])
 axes = plt.gca()
 line, = axes.plot(x, y, 'r-')
-for pt in path:
+update_freq = 10 # set how often the plot will be updated.
+for i, pt in enumerate(path):
+    # found_collision = test_for_collision(pt)
     x.append(pt[0])
     y.append(pt[1])
-    # foo = plt.plot(x, y, 'r')
-    # foo.append()
+    paint_visited(pt)
     line.set_xdata(x)
     line.set_ydata(y)
-    plt.draw()
-    plt.pause(1e-17)
-    time.sleep(0.005)
-
+    if i % update_freq == 0:
+        im_obj.set_data(img)
+        plt.draw()
+        plt.pause(1e-17)
+        time.sleep(0.005)
 
 plt.show()
