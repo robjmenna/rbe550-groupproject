@@ -1,4 +1,5 @@
 from collections import namedtuple, deque
+from operator import index, truediv
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL.Image import Image, new, open, fromarray
@@ -7,12 +8,6 @@ import time
 
 X=0 
 Y=1
-
-# class Vertex:
-#     def __init__(self, pose, previous_pose=None, cost=0) -> None:
-#         self.pose = pose
-#         self.previous_pose = previous_pose
-#         self.cost = cost
 
 # the threshold to define an obstacle in the costmap
 lethal_threshold = 225
@@ -28,10 +23,10 @@ inflation_radius = 1
 bot_radius = 3
 # The map file
 img = open('/home/robert/catkin_ws/src/ccd_planner/maps/CustomRoom.pgm')
-map = np.transpose(img)
+map = np.copy(np.transpose(img))
 occ_map = np.zeros(map.shape, dtype='float')
-cleaned_map = np.zeros(map.shape, dtype='bool')
-
+cleaned_map = set()
+heat_map = np.zeros(map.shape, dtype='int')
 
 def paint_visited(point):
     for i in range(-bot_radius, bot_radius+1):
@@ -39,6 +34,8 @@ def paint_visited(point):
         for j in range(-bot_radius, bot_radius+1):
             y = point[1] + j
             img.putpixel((x,y), 100)
+            cleaned_map.add((x,y))
+            heat_map[x, y] = heat_map[x, y] + 1
 
 def mark_as_visited(point, visited: set):
     '''Mark all of the points underneath the robot as visited'''
@@ -48,11 +45,19 @@ def mark_as_visited(point, visited: set):
             y = point[1] + j
             visited.add((x, y))
 
-# def test_for_collision(point):
-#     temp_result = occ_map[
-#         point[X]-bot_radius:point[X]+bot_radius,
-#         point[Y]-bot_radius:point[Y]+bot_radius] == float('inf')
-#     return any(temp_result)
+def test_for_collision(point):
+    # update the occupancy map
+    collision = False
+    for i in range(point[X]-bot_radius, point[X]+bot_radius):
+        for j in range(point[Y]-bot_radius, point[Y]+bot_radius):
+            if map[i,j] == 0:
+                collision = True
+                occ_map[i, j] = float('inf')
+                for ii in range(i - bot_radius, i+bot_radius+1):
+                    for jj in range(j - bot_radius, j+bot_radius+1):
+                        occ_map[ii,jj] = float('inf')
+    
+    return collision
 
 def get_neighbors(point, use_4connected=True):
     '''Get the neighbors of the given node.'''
@@ -158,8 +163,8 @@ def propogate_obsfield():
                     closed.add(neighbor)
                     # if the robot would be in a collision when the robot's center point is here
                     # mark it as an inflated obstacle.
-                    if current[0] > i - bot_radius and current[0] < i + bot_radius and \
-                        current[1] > j - bot_radius and current[1] < j + bot_radius:
+                    if current[0] >= i - bot_radius and current[0] <= i + bot_radius and \
+                        current[1] >= j - bot_radius and current[1] <= j + bot_radius:
                         occ_map[neighbor[0], neighbor[1]] = float('inf')
                         queue.append(neighbor)
                     # otherwise assign decreasing values in the map to signify that the robot
@@ -208,7 +213,7 @@ def dstar_search(start, wavefront_cost):
         Loop until the algo cannot find anymore unvisited nodes.'''
     current = start
     path = [start]
-    closed = set()
+    closed = set(cleaned_map)
     mark_as_visited(start, closed)
 
     while True:
@@ -247,7 +252,7 @@ def dstar_search(start, wavefront_cost):
     return path
 
 def add_object(shape):
-    occ_map[shape[0]:shape[1],shape[2]:shape[3]] = float('inf') * np.ones((shape[1]-shape[0], shape[3]-shape[2]), dtype='float')
+    map[shape[0]:shape[1],shape[2]:shape[3]] = np.zeros((shape[1]-shape[0], shape[3]-shape[2]), dtype='int8')
 
 # Calculate the wavefront cost...
 wavefront_cost = propagate_wavefront(goal)
@@ -259,32 +264,69 @@ wavefront_cost = {x: (wavefront_cost[x] / max_w) for x in wavefront_cost }
 # np.savetxt('custom_room_occ_map_v2.csv', occ_map, delimiter=',')
 occ_map = np.loadtxt('custom_room_occ_map_v2.csv', delimiter=',')
 # Find the path
-path = dstar_search(start, wavefront_cost)
+# path = dstar_search(start, wavefront_cost)
 
 # Plot the results.
 x = []
 y = []
 
-fig, ax = plt.subplots()
-im_obj = plt.imshow(img, cmap='gray')
-plt.xlim((0, map.shape[0]))
-plt.ylim((0, map.shape[1]))
-ax.xaxis.set_ticks([])
-ax.yaxis.set_ticks([])
-axes = plt.gca()
-line, = axes.plot(x, y, 'r-')
-update_freq = 10 # set how often the plot will be updated.
-for i, pt in enumerate(path):
-    # found_collision = test_for_collision(pt)
-    x.append(pt[0])
-    y.append(pt[1])
-    paint_visited(pt)
-    line.set_xdata(x)
-    line.set_ydata(y)
-    if i % update_freq == 0:
-        im_obj.set_data(img)
-        plt.draw()
-        plt.pause(1e-17)
-        time.sleep(0.005)
+# ax.xaxis.set_ticks([])
+# ax.yaxis.set_ticks([])
 
+update_freq = 10 # set how often the plot will be updated.
+
+# Plot the planned path
+
+
+found_collision = True
+last_index = -1
+path = []
+initial_run = True
+while found_collision:
+    if initial_run:
+        path = dstar_search(start, wavefront_cost)
+        initial_run = False
+        add_object((170,175,120,125))
+    else:
+        path = dstar_search(path[last_index], wavefront_cost)
+        last_index = -1
+    
+    plt.xlim((0, map.shape[0]))
+    plt.ylim((0, map.shape[1]))
+    
+    im_obj = plt.imshow(img, cmap='gray')
+    axes = plt.gca()
+    line, = axes.plot(x, y, 'o-')
+    for pt in path:
+        x.append(pt[0])
+        y.append(pt[1])
+
+    line2 = plt.plot(x, y, 'y:')
+    x.clear()
+    y.clear()
+
+    
+    for i, pt in enumerate(path):
+        found_collision = test_for_collision(pt)
+        if found_collision:
+            x.clear()
+            y.clear()
+            line2[0].set_xdata(x)
+            line2[0].set_ydata(y)
+            line.set_xdata(x)
+            line.set_ydata(y)
+            break
+        last_index = last_index + 1
+        paint_visited(pt)
+        x.append(pt[0])
+        y.append(pt[1])
+        line.set_xdata(x)
+        line.set_ydata(y)
+        if i % update_freq == 0:
+            im_obj.set_data(img)
+            plt.draw()
+            plt.pause(1e-17)
+            time.sleep(0.005)
+
+# np.savetxt('heatmap.csv', heat_map, delimiter=',')
 plt.show()
